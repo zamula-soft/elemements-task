@@ -1,0 +1,117 @@
+version: '3'
+
+services:
+  db:
+    container_name: db_postgres
+    platform: linux/amd64
+    build: ./db
+    restart: always
+    image: postgres:14.3-alpine
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=app_database
+    volumes:
+      - pgdata:/var/lib/postgresql/data/
+    ports:
+      - 5432:5432
+    expose:
+      - 5432
+    networks:
+      - django-network
+
+  redis:
+    image: redis:alpine
+    networks:
+      - django-network
+  celery:
+    build: ./
+    command: celery -A app worker -l info
+    volumes:
+      - ./app/:/usr/src/app/
+    environment:
+      - DEBUG=1
+      - SECRET_KEY=dbaa1_i7%*3r9-=z-+_mz4r-!qeed@(-a_r(g@k8jo8y3r27%m
+      - DJANGO_ALLOWED_HOSTS=localhost 127.0.0.1 [::1]
+    networks:
+      - django-network
+    depends_on:
+      - redis
+  celery-beat:
+    build: ./
+    command: celery -A app beat -l info
+    volumes:
+      - ./app/:/usr/src/app/
+    environment:
+      - DEBUG=1
+      - SECRET_KEY=dbaa1_i7%*3r9-=z-+_mz4r-!qeed@(-a_r(g@k8jo8y3r27%m
+      - DJANGO_ALLOWED_HOSTS=localhost 127.0.0.1 [::1]
+    networks:
+      - django-network
+    depends_on:
+      - redis
+
+  app:
+    build:
+      context:  .
+    restart: always
+    expose:
+      - 8000
+    ports:
+      - 8000:8000
+    volumes:
+      - /opt/app
+    command:
+#      sh -c "python manage.py createsuperuser --noinput --username $DJANGO_SUPERUSER_USERNAME --email $DJANGO_SUPERUSER_EMAIL"
+#      sh -c "python manage.py makemigrations &&
+#      python manage.py migrate"
+#      sh -c "python manage.py migrate django_celery_results"
+      sh -c "python manage.py runserver 0.0.0.0:8000"
+    environment:
+      - DB_HOST=db_postgres
+      - DB_NAME=app_database
+      - DB_USER=postgres
+      - DB_PATH=postgres
+    networks:
+      - django-network
+    depends_on:
+      - db
+
+  pgadmin:
+    container_name: pgadmin4
+    image: dpage/pgadmin4
+    restart: always
+
+    environment:
+      PGADMIN_DEFAULT_EMAIL: a@a.com
+      PGADMIN_DEFAULT_PASSWORD: a
+    ports:
+      - 5050:80
+    depends_on:
+      - db
+    networks:
+      - django-network
+
+#  swagger:
+#    image: swaggerapi/swagger-ui
+#    restart: always
+#    expose:
+#      - 8080
+#    ports:
+#      - 8080:8080
+#    depends_on:
+#      - app
+#    environment:
+#      SWAGGER_JSON: /swagger.yaml
+##    volumes:
+##        - swagger-json:/
+#    command: docker run -p 8080:8080 --name swagger -v openapi.yaml:/swagger.yaml -e SWAGGER_JSON=/swagger.yaml swaggerapi/swagger-ui
+#    networks:
+#      - django-network
+
+networks:
+  django-network:
+    driver: bridge
+
+volumes:
+  pgdata:
